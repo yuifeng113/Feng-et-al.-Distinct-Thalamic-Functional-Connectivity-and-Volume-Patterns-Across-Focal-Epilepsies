@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# Base directory 
+BASE_DIR="~\subj_T1"
+
+## THOMAS thalamic segmentation
+
+# Find all T1w.nii files in the directory and subdirectories
+find "$BASE_DIR" -name "sub-*_ses-VGCO_T1w.nii" | while read -r nii_file; do
+    # Get the directory containing the current T1w.nii file
+    nii_dir=$(dirname "$nii_file")
+    
+    # Get the filename of the current T1w.nii file
+    nii_filename=$(basename "$nii_file")
+
+    # Display the directory and file being processed
+    echo "Processing $nii_filename in directory: $nii_dir"
+    
+    # Run the Docker command in the correct directory
+    docker run -v "$nii_dir:$nii_dir" -w "$nii_dir" --user "$(id -u):$(id -g)" --rm -t anagrammarian/thomasmerged \
+        bash -c "hipsthomas_csh -i $nii_filename -t1"
+
+    # Print a completion message for the current file
+    echo "Finished processing $nii_filename"
+done
+
+## Freesurfer TIV segmentation
+
+outdir="~/subj_freesurfer"
+
+# Loop through subject directories
+find "$BASE_DIR" -mindepth 1 -maxdepth 1 -type d -name "sub-*" | while read -r sub_path; do
+    sub=$(basename "$sub_path")  # Extract subject ID
+
+    # Find the T1w.nii file
+    t1w_in=$(find "$sub_path" -type f -name "sub-*_ses-VGCO_T1w.nii" | head -n 1)
+
+    if [[ -f "$t1w_in" ]]; then
+        recon-all -subject "$sub" -all -i "$t1w_in" -sd "$outdir" -parallel -openmp 8
+        echo "Finished processing $sub."
+    else
+        echo "T1w.nii not found for $sub, skipping."
+    fi
+done
